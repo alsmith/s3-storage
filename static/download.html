@@ -1,0 +1,47 @@
+<!doctype html>
+<html>
+<head>
+<title>S3 service</title>
+<meta name="viewport" content="width=device-width,height=device-height,initial-scale=1.0" />
+<script type="text/javascript" src="https://static.aeschi.eu/jquery.min.js"></script>
+<script type="text/javascript" src="https://static.aeschi.eu/cookie.js"></script>
+<script type="text/javascript" src="https://static.aeschi.eu/utils.js"></script>
+<script type="text/javascript" src="https://id.aeschi.eu/auth.js"></script>
+<link rel="stylesheet" type="text/css" href="https://static.aeschi.eu/style.css">
+<script type="text/javascript">
+
+function main() {
+  $.ajax({
+    type: 'GET',
+    url: 'api/s3/1.0/object?handle='+$.getUrlVar('handle'),
+    beforeSend: addAccessToken,
+  }).done(function(data) {
+    if (data.mimeType.substr(0,5) == 'image') {
+      var img = $('<img>');
+      img.attr('src', 'data:'+data.mimeType+';base64,'+data.content);
+      $('body').append(img);
+    } else if (data.mimeType.substr(0,4) == 'text') {
+      var pre = $('<pre>');
+      pre.text(atob(data.content));
+      $('body').append(pre);
+    } else {
+      var a = $('<a>');
+      a.text('Download');
+      a.attr('id', 'download');
+      a.attr('href', 'data:'+data.mimeType+';base64,'+data.content);
+      a.attr('download', data.name);
+      $('body').append(a);
+      $('#download')[0].click();
+    }
+  }).fail(ajaxFail);
+}
+
+$(document).ready(function() {
+  authorise('s3', main);
+});
+
+</script>
+</head>
+<body>
+</body>
+</html>
