@@ -1,7 +1,7 @@
 <!doctype html>
 <html>
 <head>
-<title>S3 service</title>
+<title>Simple Storage Service</title>
 <meta name="viewport" content="width=device-width,height=device-height,initial-scale=1.0" />
 <script type="text/javascript" src="https://static.aeschi.eu/jquery.min.js"></script>
 <script type="text/javascript" src="https://static.aeschi.eu/jquery-ui.min.js"></script>
@@ -10,6 +10,11 @@
 <script type="text/javascript" src="https://id.aeschi.eu/auth.js"></script>
 <link rel="stylesheet" type="text/css" href="https://static.aeschi.eu/style.css">
 <link rel="stylesheet" type="text/css" href="https://static.aeschi.eu/jquery-ui.min.css">
+<style text="text/css">
+.ui-icon {
+  background-image: url(https://static.aeschi.eu/images/ui-icons_cc0000_256x240.png);
+}
+</style>
 <script type="text/javascript">
 function refreshFiles() {
   $('#files').empty();
@@ -25,7 +30,7 @@ function refreshFiles() {
       if (!header) {
         header = true;
         var tr = $('<tr>');
-        $.each(['Timestamp', 'Filename', 'Remove'], function(hIndex, hValue) {
+        $.each(['Created', 'Filename', 'Remove'], function(hIndex, hValue) {
           var th = $('<th>');
           $(th).html(hValue);
           $(tr).append(th);
@@ -34,7 +39,7 @@ function refreshFiles() {
       }
       var tr = $('<tr>');
       var td = $('<td>');
-      $(td).html(value.createdAt);
+      $(td).html(value.created);
       $(tr).append(td);
 
       var td = $('<td>');
@@ -43,27 +48,30 @@ function refreshFiles() {
       $(td).click(function() {
         $.ajax({
           type: 'GET',
-          url: 'api/s3/1.0/object/'+value.handle,
+          url: 'api/s3/1.0/object/'+value.key,
           beforeSend: addAccessToken,
         }).done(function(data) {
           console.log(data);
-          var w = window.open('download.html?handle='+value.handle, 'popupWindow', 'width=600, height=400, scrollbars=yes');
+          var w = window.open('download.html?key='+value.key, 'popupWindow', 'width=600, height=400, scrollbars=yes');
         }).fail(ajaxFail);
       });
       $(tr).append(td);
 
-      var td = $('<td>');
-      $(td).css('cursor', 'pointer');
-      $(td).html('<span class="ui-icon ui-icon-circle-minus"></span>');
-      $(td).click(function() {
+      var span = $('<span>');
+      $(span).css('cursor', 'pointer');
+      $(span).addClass('ui-icon ui-icon-circle-minus');
+      $(span).click(function() {
         $.ajax({
           type: 'DELETE',
-          url: 'api/s3/1.0/object/'+value.handle,
+          url: 'api/s3/1.0/object/'+value.key,
           beforeSend: addAccessToken,
         }).done(function(data) {
           refreshFiles();
         }).fail(ajaxFail);
       });
+      var td = $('<td>');
+      $(td).css('text-align', 'center');
+      $(td).append(span);
       $(tr).append(td);
 
       $('#files').append(tr);
@@ -72,17 +80,16 @@ function refreshFiles() {
 }
 
 function main() {
-  $('#files').show();
-  $('#upload').show();
+  $('#content').show();
 
   $(document).bind('iframeLoaded', function(e) {
-    documentHandle = $('#upload_target').contents().find('#handle').text();
+    key = $('#upload_target').contents().find('#key').text();
     $.ajax({
       type: 'PUT',
       url: 'api/s3/1.0/upload',
       beforeSend: addAccessToken,
       contentType: 'application/json',
-      data: JSON.stringify({'handle': documentHandle})
+      data: JSON.stringify({'key': key})
     }).done(function(data) {
       $('#doUpload').get(0).reset();
       refreshFiles();
@@ -91,19 +98,22 @@ function main() {
   refreshFiles();
 }
 
-$(document).ready(function() {
+$('body').ready(function() {
   authorise('s3', main);
 });
 
 </script>
 </head>
 <body>
-<table id="files" style="display: none"></table>
+<div id="content" style="display: none">
+<h3>Simple Storage Service</h3>
+<table id="files"></table>
 <form id="doUpload" action="api/s3/1.0/upload" method="post" enctype="multipart/form-data" target="upload_target">
-<table id="upload" style="display: none">
+<table id="upload">
 <tr><td><input type="file" name="upload"></td><td><input type="submit" value="Upload"></td></tr>
 </table>
 </form>
-<iframe id="upload_target" name="upload_target" src="#" style="display:none"></iframe>
+<iframe id="upload_target" name="upload_target" style="display: none"></iframe>
+</div>
 </body>
 </html>

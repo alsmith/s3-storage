@@ -13,7 +13,7 @@
 function main() {
   $.ajax({
     type: 'GET',
-    url: 'api/s3/1.0/object?handle='+$.getUrlVar('handle'),
+    url: 'api/s3/1.0/object?key='+$.getUrlVar('key'),
     beforeSend: addAccessToken,
   }).done(function(data) {
     if (data.mimeType.substr(0,5) == 'image') {
