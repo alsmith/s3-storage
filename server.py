@@ -7,7 +7,6 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '
 import helpers
 import init
 import log
-import s3
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'openid'))
 import openid
