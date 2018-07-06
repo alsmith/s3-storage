@@ -3,23 +3,31 @@
 import os, sys
 import cherrypy
 
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'lib'))
-import helpers
 import init
-import log
-
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'openid'))
 import openid
+import s3
+
+def dumper(*args, **kwargs):
+    def helper(obj):
+        if isinstance(obj, datetime.datetime):
+            return obj.isoformat().replace('T', ' ')
+        elif isinstance(obj, datetime.date):
+            return obj.isoformat()
+        elif isinstance(obj, datetime.timedelta):
+            return str((datetime.datetime.min + obj).time())
+        elif isinstance(obj, decimal.Decimal):
+            return float(obj)
+        return None
+
+    value = cherrypy.serving.request._json_inner_handler(*args, **kwargs)
+    return bytes(json.dumps(value, default=helper), 'utf-8')
 
 class API():
     class List():
         def __init__(self, api):
             self.api = api
-            self.DELETE = helpers.notImplemented
-            self.POST = helpers.notImplemented
-            self.PUT = helpers.notImplemented
 
-        @cherrypy.tools.json_out(handler=helpers.dumper)
+        @cherrypy.tools.json_out(handler=dumper)
         def GET(self):
             user = self.api.openid.validateAccessToken('s3')
             if not user:
@@ -29,8 +37,6 @@ class API():
     class Object():
         def __init__(self, api):
             self.api = api
-            self.POST = helpers.notImplemented
-            self.PUT = helpers.notImplemented
 
         @cherrypy.tools.json_out()
         def GET(self, key):
@@ -41,7 +47,7 @@ class API():
             content = self.api.s3.get(key, user)
             if not content:
                 raise cherrypy.HTTPError(500)
-            self.api.log.log(msg='%s/%s' % (user, key[:16]), context='GET')
+            cherrypy.log(msg='%s/%s' % (user, key[:16]), context='GET')
             return content
 
         @cherrypy.tools.json_in()
@@ -54,14 +60,12 @@ class API():
                 raise cherrypy.HTTPError(400)
 
             self.api.s3.delete(user, vpath[0])
-            self.api.log.log(msg='%s/%s' % (user, vpath[0][:16]), context='DELETE')
+            cherrypy.log(msg='%s/%s' % (user, vpath[0][:16]), context='DELETE')
             return
 
     class Upload():
         def __init__(self, api):
             self.api = api
-            self.GET = helpers.notImplemented
-            self.DELETE = helpers.notImplemented
 
         def POST(self, upload):
             name = upload.filename
@@ -71,7 +75,7 @@ class API():
 
             text = '<span id="key">%s</span>' % key
             text += '<script type="text/javascript">parent.$(\'body\').trigger(\'iframeLoaded\');</script>';
-            self.api.log.log(msg='%s' % (key[:16],), context='UPLOAD1')
+            cherrypy.log(msg='%s' % (key[:16],), context='UPLOAD1')
             return text
 
         @cherrypy.tools.json_in()
@@ -85,11 +89,10 @@ class API():
                 raise cherrypy.HTTPError(400)
 
             self.api.s3.storeFile(request['key'], user)
-            self.api.log.log(msg='%s/%s' % (user, request['key'][:16]), context='UPLOAD2')
+            cherrypy.log(msg='%s/%s' % (user, request['key'][:16]), context='UPLOAD2')
 
     def __init__(self):
         self.openid = openid.OpenID('s3')
-        self.log = log.Log('s3')
         self.s3 = s3.S3Sync(pri={'region': cherrypy.config['s3.pri.region'],
                                  'bucket': cherrypy.config['s3.pri.bucket'],
                                  'access': cherrypy.config['s3.pri.access'],
@@ -98,7 +101,7 @@ class API():
                                  'bucket': cherrypy.config['s3.sec.bucket'],
                                  'access': cherrypy.config['s3.sec.access'],
                                  'secret': cherrypy.config['s3.sec.secret']},
-                            log=self.log)
+                            log=cherrypy.log)
 
         self.list = self.List(self)
         self.list.exposed = True
