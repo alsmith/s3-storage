@@ -7,6 +7,7 @@ import db
 
 class S3Sync():
     def __init__(self, pri, sec, log):
+        # boto.set_stream_logger('s3')
         self.buckets = {
           'pri': boto.s3.connect_to_region(pri['region'], aws_access_key_id=pri['access'], aws_secret_access_key=pri['secret']).get_bucket(pri['bucket']),
           'sec': boto.s3.connect_to_region(sec['region'], aws_access_key_id=sec['access'], aws_secret_access_key=sec['secret']).get_bucket(sec['bucket'])
@@ -67,19 +68,32 @@ class S3Sync():
             # Remove objects where the upload is taking longer than expected.
             cursor.execute('DELETE FROM `objects` WHERE `uploading` = %s AND NOW() > DATE_ADD(`created`, INTERVAL 15 MINUTE)', (True,))
 
+            for store in ['pri', 'sec']:
+                for s3Keys in self._listKeysBatch(store, batch=4096):
+                    cursor.execute('SELECT `key` FROM `objects` WHERE `key` IN %s', (s3Keys,))
+                    dbKeys = list(map(lambda key: key['key'], list(cursor.fetchall())))
+
+                    # Here we get the list of keys that exist in S3 but do not exist in the database.
+                    orphanS3Keys = set(s3Keys) - set(dbKeys)
+                    for orphanS3Key in list(orphanS3Keys):
+                        self.log.log(msg='Removing orphan S3 object: %s from %s' % (orphanS3Key, store), context='SYNC')
+                        self._deleteKey(orphanS3Key, store)
+
+            # cursor.execute('UPDATE `objects` SET `%s` = %%s WHERE `key` = %%s' % store, (False, orphanS3Key))
+
             # Remove objects that need to be expired
             cursor.execute('SELECT * FROM `objects` WHERE `deleteAfter` < NOW()')
             for obj in list(cursor.fetchall()):
                 try:
                     if self._existsKey(obj['key'], 'pri'):
                         self._deleteKey(obj['key'], 'pri')
-                    cursor.execute('UPDATE `objects` SET `pri` = %s WHERE `id` = %s', (False, obj['id'],))
+                    cursor.execute('UPDATE `objects` SET `pri` = %s WHERE `id` = %s', (False, obj['id']))
                 except Exception as e:
                     self.log.log(msg='Primary delete for %s failed: %s' % (obj['id'], str(e)), context='SYNC')
                 try:
                     if self._existsKey(obj['key'], 'sec'):
                         self._deleteKey(obj['key'], 'sec')
-                    cursor.execute('UPDATE `objects` SET `sec` = %s WHERE `id` = %s', (False, obj['id'],))
+                    cursor.execute('UPDATE `objects` SET `sec` = %s WHERE `id` = %s', (False, obj['id']))
                 except Exception as e:
                     self.log.log(msg='Secondary delete for %s failed: %s' % (obj['id'], str(e)), context='SYNC')
             cursor.execute('DELETE FROM `objects` WHERE `pri` = %s AND `sec` = %s AND `deleteAfter` < NOW()', (False, False))
@@ -131,4 +145,16 @@ class S3Sync():
     def _deleteKey(self, key, provider):
         s3object = self.buckets[provider].get_key(key)
         s3object.delete()
+
+    def _listKeysBatch(self, provider, batch):
+        keys = []
+        for key in self._listKeys(provider):
+            keys.append(key.key)
+            if len(keys) == batch:
+                yield(keys)
+                keys = []
+        yield(keys)
+
+    def _listKeys(self, provider):
+        return self.buckets[provider].list()
 
